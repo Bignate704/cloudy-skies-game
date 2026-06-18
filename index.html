@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Cloudy Skies</title>
+
+<!-- PWA / iPhone home-screen app -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#9ed2ff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cloudy Skies">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #9ed2ff;
+    overflow: hidden;
+    font-family: "Comic Sans MS", "Trebuchet MS", system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* respect the iPhone notch / home indicator */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+  }
+  canvas {
+    display: block;
+    background: linear-gradient(#bfe3ff, #eaf6ff);
+    border-radius: 10px;
+    image-rendering: auto;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="400" height="640"></canvas>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // ---- Tunables (kept close to Doodle Jump feel) ----
+  const GRAVITY = 0.32;
+  const JUMP_V = -13.2;          // normal platform bounce
+  const SPRING_V = -22;          // spring boost
+  const MOVE_ACCEL = 0.9;
+  const MAX_MOVE = 7.2;
+  const FRICTION = 0.86;
+  const PLAT_W = 70;
+  const PLAT_H = 16;
+  const SCROLL_LINE = H * 0.42;  // when bear passes this, world scrolls
+
+  // ---- State ----
+  let state = "menu";  // menu | play | dead
+  let bear, platforms, particles;
+  let score, scrollY, highScore = 0;
+  let dir = 0;          // -1 left, 1 right, 0 none (keyboard)
+  let tilt = 0;         // device / pointer steering -1..1
+  let frame = 0;
+
+  try { highScore = parseInt(localStorage.getItem("cloudySkiesHi") || "0", 10) || 0; } catch (e) {}
+
+  function reset() {
+    bear = { x: W / 2, y: H - 120, vx: 0, vy: JUMP_V, w: 46, h: 42, face: 1, flap: 0 };
+    platforms = [];
+    particles = [];
+    score = 0;
+    scrollY = 0;
+
+    // Starting platform right under the bear
+    platforms.push(makePlatform(W / 2 - PLAT_W / 2, H - 70, "normal"));
+
+    // Fill the screen going up
+    let y = H - 70;
+    while (y > -40) {
+      y -= 60 + Math.random() * 55;
+      spawnPlatformAt(y);
+    }
+  }
+
+  function makePlatform(x, y, type) {
+    const p = { x, y, w: PLAT_W, h: PLAT_H, type, vx: 0, broken: false, spring: false };
+    if (type === "moving") p.vx = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * 1.2);
+    if (Math.random() < 0.18 && type !== "broken") p.spring = true;
+    return p;
+  }
+
+  function spawnPlatformAt(y) {
+    const x = Math.random() * (W - PLAT_W);
+    let type = "normal";
+    const r = Math.random();
+    const difficulty = Math.min(score / 6000, 1);
+    if (r < 0.12 + difficulty * 0.15) type = "moving";
+    else if (r < 0.22 + difficulty * 0.18) type = "broken";
+    platforms.push(makePlatform(x, y, type));
+  }
+
+  // ---- Input ----
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "a") dir = -1;
+    else if (e.key === "ArrowRight" || e.key === "d") dir = 1;
+    else if ((e.key === " " || e.key === "Enter")) {
+      if (state !== "play") { startGame(); }
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    if ((e.key === "ArrowLeft" || e.key === "a") && dir === -1) dir = 0;
+    if ((e.key === "ArrowRight" || e.key === "d") && dir === 1) dir = 0;
+  });
+
+  // Pointer steering: hold/drag on the left or right side to steer
+  function pointerSteer(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const rel = (clientX - rect.left) / rect.width; // 0..1
+    tilt = Math.max(-1, Math.min(1, (rel - 0.5) * 2.2));
+  }
+  canvas.addEventListener("pointerdown", (e) => {
+    if (state !== "play") { startGame(); return; }
+    pointerSteer(e.clientX);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (e.buttons) pointerSteer(e.clientX);
+  });
+  canvas.addEventListener("pointerup", () => { tilt = 0; });
+  canvas.addEventListener("pointercancel", () => { tilt = 0; });
+  canvas.addEventListener("pointerleave", () => { tilt = 0; });
+
+  // Device tilt on phones. iOS needs a permission request (triggered on first tap below).
+  function onOrient(e) {
+    if (e.gamma != null) tilt = Math.max(-1, Math.min(1, e.gamma / 25));
+  }
+  window.addEventListener("deviceorientation", onOrient);
+
+  let tiltAsked = false;
+  function requestTilt() {
+    if (tiltAsked) return;
+    tiltAsked = true;
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === "function") {
+      DOE.requestPermission().then((res) => {
+        if (res === "granted") window.addEventListener("deviceorientation", onOrient);
+      }).catch(() => {});
+    }
+  }
+
+  function startGame() {
+    requestTilt();   // ask for motion access on the first user tap (iOS requirement)
+    reset();
+    state = "play";
+  }
+
+  // ---- Update ----
+  function update() {
+    frame++;
+    if (state !== "play") return;
+
+    // horizontal control
+    let steer = dir !== 0 ? dir : tilt;
+    bear.vx += steer * MOVE_ACCEL;
+    if (steer === 0) bear.vx *= FRICTION;
+    bear.vx = Math.max(-MAX_MOVE, Math.min(MAX_MOVE, bear.vx));
+    bear.x += bear.vx;
+    if (bear.vx > 0.3) bear.face = 1;
+    else if (bear.vx < -0.3) bear.face = -1;
+
+    // wrap around edges (classic Doodle Jump)
+    if (bear.x < -bear.w / 2) bear.x = W + bear.w / 2;
+    else if (bear.x > W + bear.w / 2) bear.x = -bear.w / 2;
+
+    // gravity
+    bear.vy += GRAVITY;
+    bear.y += bear.vy;
+    bear.flap += bear.vy < 0 ? 0.4 : 0.15;
+
+    // moving platforms
+    for (const p of platforms) {
+      if (p.type === "moving" && !p.broken) {
+        p.x += p.vx;
+        if (p.x < 0) { p.x = 0; p.vx *= -1; }
+        if (p.x + p.w > W) { p.x = W - p.w; p.vx *= -1; }
+      }
+    }
+
+    // collision (only when falling)
+    if (bear.vy > 0) {
+      const bx = bear.x - bear.w * 0.34;
+      const bw = bear.w * 0.68;
+      const feet = bear.y + bear.h / 2;
+      for (const p of platforms) {
+        if (p.broken) continue;
+        if (feet >= p.y && feet <= p.y + p.h + bear.vy &&
+            bx + bw > p.x && bx < p.x + p.w &&
+            bear.y < p.y) {
+          if (p.type === "broken") {
+            p.broken = true;
+            spawnPieces(p);
+            continue; // fall through it
+          }
+          if (p.spring) {
+            bear.vy = SPRING_V;
+            puff(bear.x, feet, "#ffd34d");
+          } else {
+            bear.vy = JUMP_V;
+            puff(bear.x, feet, "#ffffff");
+          }
+          break;
+        }
+      }
+    }
+
+    // scroll world when climbing high
+    if (bear.y < SCROLL_LINE) {
+      const dy = SCROLL_LINE - bear.y;
+      bear.y = SCROLL_LINE;
+      scrollY += dy;
+      score += dy * 0.1;
+      for (const p of platforms) p.y += dy;
+      for (const pc of particles) pc.y += dy;
+    }
+
+    // recycle platforms that fell off bottom; spawn new on top
+    let highest = H;
+    platforms = platforms.filter((p) => p.y < H + 30);
+    for (const p of platforms) highest = Math.min(highest, p.y);
+    while (highest > -10) {
+      highest -= 55 + Math.random() * 60;
+      spawnPlatformAt(highest);
+    }
+
+    // particles
+    for (const pc of particles) {
+      pc.x += pc.vx;
+      pc.y += pc.vy;
+      pc.vy += 0.25;
+      pc.life--;
+    }
+    particles = particles.filter((pc) => pc.life > 0);
+
+    // death: fell below screen
+    if (bear.y - bear.h / 2 > H) {
+      state = "dead";
+      const s = Math.floor(score);
+      if (s > highScore) {
+        highScore = s;
+        try { localStorage.setItem("cloudySkiesHi", String(highScore)); } catch (e) {}
+      }
+    }
+  }
+
+  function puff(x, y, color) {
+    for (let i = 0; i < 6; i++) {
+      particles.push({
+        x, y, vx: (Math.random() - 0.5) * 3, vy: Math.random() * -1,
+        life: 18 + Math.random() * 10, color, r: 3 + Math.random() * 4
+      });
+    }
+  }
+  function spawnPieces(p) {
+    for (let i = 0; i < 8; i++) {
+      particles.push({
+        x: p.x + Math.random() * p.w, y: p.y, vx: (Math.random() - 0.5) * 4,
+        vy: Math.random() * -2, life: 30, color: "#c98a4a", r: 3 + Math.random() * 3
+      });
+    }
+  }
+
+  // ---- Render ----
+  function drawCloud(x, y, s, a) {
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(x, y, 18 * s, 0, Math.PI * 2);
+    ctx.arc(x + 20 * s, y + 4 * s, 22 * s, 0, Math.PI * 2);
+    ctx.arc(x + 44 * s, y, 16 * s, 0, Math.PI * 2);
+    ctx.arc(x + 22 * s, y - 12 * s, 16 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#9ed2ff");
+    g.addColorStop(1, "#eaf7ff");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // parallax clouds based on scroll
+    const off = (scrollY * 0.3) % 220;
+    for (let i = 0; i < 6; i++) {
+      const cy = (i * 220 + off) % (H + 220) - 110;
+      const cx = (i * 137 % W);
+      drawCloud(cx, cy, 0.9, 0.55);
+    }
+  }
+
+  function drawPlatform(p) {
+    if (p.broken) return;
+    const x = p.x, y = p.y;
+    // cloud-style platform
+    ctx.save();
+    let base = p.type === "moving" ? "#b8e0ff" : "#ffffff";
+    ctx.fillStyle = base;
+    ctx.strokeStyle = "rgba(120,160,200,0.5)";
+    ctx.lineWidth = 2;
+    roundRect(x, y, p.w, p.h, 8);
+    ctx.fill();
+    // little bumps to look cloudy
+    ctx.beginPath();
+    ctx.arc(x + 14, y + 4, 10, 0, Math.PI * 2);
+    ctx.arc(x + 36, y + 2, 12, 0, Math.PI * 2);
+    ctx.arc(x + 56, y + 5, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (p.spring) {
+      // a little spring/feather boost marker
+      ctx.fillStyle = "#ffb23e";
+      ctx.beginPath();
+      ctx.moveTo(x + p.w / 2 - 8, y - 2);
+      ctx.lineTo(x + p.w / 2, y - 16);
+      ctx.lineTo(x + p.w / 2 + 8, y - 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBear() {
+    const b = bear;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.scale(b.face, 1);
+
+    const brown = "#9b5d33";
+    const darkB = "#7a4626";
+    const light = "#c98a4a";
+
+    // wings (flap with vertical motion)
+    const wf = Math.sin(b.flap) * 0.5 + (b.vy < 0 ? 0.9 : 0.3);
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.strokeStyle = "rgba(180,200,220,0.7)";
+    ctx.lineWidth = 1.5;
+    // back wing
+    drawWing(-6, -2, -1, wf);
+    // front wing
+    drawWing(-6, -2, 1, wf * 0.85);
+
+    // body
+    ctx.fillStyle = brown;
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 17, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // belly
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.ellipse(2, 9, 9, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // legs
+    ctx.fillStyle = darkB;
+    ctx.beginPath();
+    ctx.ellipse(-7, 20, 5, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(8, 20, 5, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // head
+    ctx.fillStyle = brown;
+    ctx.beginPath();
+    ctx.arc(7, -10, 14, 0, Math.PI * 2);
+    ctx.fill();
+    // ears
+    ctx.beginPath();
+    ctx.arc(0, -20, 5, 0, Math.PI * 2);
+    ctx.arc(15, -19, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.arc(0, -20, 2.4, 0, Math.PI * 2);
+    ctx.arc(15, -19, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    // muzzle
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.ellipse(12, -6, 7, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // nose
+    ctx.fillStyle = "#3a2415";
+    ctx.beginPath();
+    ctx.arc(15, -8, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    // eyes
+    ctx.fillStyle = "#2a1a0f";
+    ctx.beginPath();
+    ctx.arc(4, -13, 2.2, 0, Math.PI * 2);
+    ctx.arc(13, -13, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(4.7, -13.7, 0.8, 0, Math.PI * 2);
+    ctx.arc(13.7, -13.7, 0.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawWing(ox, oy, side, spread) {
+    ctx.save();
+    ctx.translate(ox, oy);
+    const sp = 0.5 + spread;     // how raised
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-18 * side, -14 * sp, -26 * side, -2 * sp);
+    ctx.quadraticCurveTo(-20 * side, 2, -14 * side, 8);
+    ctx.quadraticCurveTo(-10 * side, 2, 0, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // feather lines
+    ctx.strokeStyle = "rgba(170,190,210,0.6)";
+    ctx.beginPath();
+    ctx.moveTo(-6 * side, 0); ctx.lineTo(-16 * side, -3 * sp);
+    ctx.moveTo(-7 * side, 3); ctx.lineTo(-15 * side, 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const pc of particles) {
+      ctx.globalAlpha = Math.max(0, pc.life / 28);
+      ctx.fillStyle = pc.color;
+      ctx.beginPath();
+      ctx.arc(pc.x, pc.y, pc.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawHUD() {
+    ctx.fillStyle = "rgba(40,60,90,0.85)";
+    ctx.font = "bold 26px 'Comic Sans MS', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(String(Math.floor(score)), 14, 34);
+    ctx.font = "13px 'Comic Sans MS', sans-serif";
+    ctx.fillStyle = "rgba(40,60,90,0.6)";
+    ctx.fillText("BEST " + highScore, 14, 52);
+  }
+
+  function drawMenu() {
+    drawBackground();
+    // sample platforms for looks
+    drawCloud(80, 480, 1, 0.7);
+    drawCloud(280, 540, 0.8, 0.7);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#2a4a7a";
+    ctx.font = "bold 48px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Cloudy", W / 2, 180);
+    ctx.fillText("Skies", W / 2, 230);
+
+    // show the bear hovering on the menu
+    bear = bear || { x: W / 2, y: 320, vx: 0, vy: 0, w: 46, h: 42, face: 1, flap: 0 };
+    bear.x = W / 2; bear.y = 330 + Math.sin(frame * 0.06) * 10; bear.flap = frame * 0.2; bear.face = 1; bear.vy = -1;
+    drawBear();
+
+    ctx.fillStyle = "#2a4a7a";
+    ctx.font = "bold 20px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Tap to Fly", W / 2, 460);
+    ctx.font = "15px 'Comic Sans MS', sans-serif";
+    ctx.fillStyle = "rgba(42,74,122,0.8)";
+    ctx.fillText("Tilt your phone to steer", W / 2, 500);
+    ctx.fillText("(or hold left / right side)", W / 2, 524);
+    if (highScore > 0) ctx.fillText("Best: " + highScore, W / 2, 560);
+  }
+
+  function drawDead() {
+    // dim
+    ctx.fillStyle = "rgba(20,30,55,0.55)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 40px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Down you go!", W / 2, 250);
+    ctx.font = "bold 30px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Score " + Math.floor(score), W / 2, 310);
+    ctx.font = "20px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Best " + highScore, W / 2, 348);
+    ctx.font = "bold 22px 'Comic Sans MS', sans-serif";
+    ctx.fillStyle = "#ffd34d";
+    ctx.fillText("Tap to fly again", W / 2, 430);
+  }
+
+  // ---- Main loop ----
+  function loop() {
+    update();
+
+    if (state === "menu") {
+      drawMenu();
+    } else {
+      drawBackground();
+      for (const p of platforms) drawPlatform(p);
+      drawParticles();
+      drawBear();
+      drawHUD();
+      if (state === "dead") drawDead();
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  // Scale canvas to fill the screen (keeping aspect ratio) inside the safe area
+  function fit() {
+    const cs = getComputedStyle(document.getElementById("wrap"));
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const maxW = window.innerWidth - padX;
+    const maxH = window.innerHeight - padY;
+    const scale = Math.min(maxW / W, maxH / H);
+    canvas.style.width = (W * scale) + "px";
+    canvas.style.height = (H * scale) + "px";
+  }
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", () => setTimeout(fit, 200));
+  fit();
+
+  // prevent the page itself from scrolling / rubber-banding on iOS
+  document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+  // register the offline service worker (works once hosted over https)
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+
+  loop();
+})();
+</script>
+</body>
+</html>

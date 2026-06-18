@@ -1,0 +1,51 @@
+CLOUDY SKIES — installing on your iPhone
+========================================
+
+Your game is now a proper "installable" app (a PWA). On an iPhone it gets its
+own home-screen icon, launches fullscreen with no Safari bars, and works
+offline once installed. You just need to put the files online first, because
+iPhones can only install apps from a web address (not from a file on a PC).
+
+Everything you need is in this folder:
+  index.html              <- the game
+  manifest.webmanifest    <- makes it installable
+  sw.js                   <- offline support
+  icon-192.png / icon-512.png / apple-touch-icon.png  <- the app icon
+
+
+EASIEST WAY TO HOST IT FREE (about 5 minutes)
+---------------------------------------------
+Using GitHub Pages:
+
+  1. Make a free account at https://github.com
+  2. Click the "+" (top right) -> "New repository".
+       - Name it something like  cloudy-skies
+       - Set it to Public, then "Create repository".
+  3. On the new repo page click "uploading an existing file".
+  4. Drag in ALL the files from this folder, then "Commit changes".
+  5. Go to the repo's  Settings -> Pages.
+       - Under "Branch" choose  main  and  / (root), then Save.
+  6. Wait ~1 minute, refresh. GitHub shows a URL like:
+       https://YOURNAME.github.io/cloudy-skies/
+
+
+PUT IT ON THE HOME SCREEN
+-------------------------
+  1. Open that URL in SAFARI on the iPhone (must be Safari, not Chrome).
+  2. Tap the Share button (the square with the up-arrow).
+  3. Tap "Add to Home Screen".
+  4. Tap "Add".
+
+You now have a "Cloudy Skies" icon. Open it and it runs fullscreen like a
+normal app. Tilt the phone to steer (it'll ask for motion permission once).
+
+
+WANT IT IN THE REAL APP STORE INSTEAD?
+--------------------------------------
+That's a bigger lift and CAN'T be done from this Windows PC. Apple requires:
+  - a Mac with Xcode,
+  - an Apple Developer account ($99/year),
+  - wrapping this game with a tool like Capacitor (https://capacitorjs.com),
+    then building and submitting it through Xcode.
+The PWA above is free and gives you a real app icon today; the App Store route
+is only worth it if you specifically need a public Store listing.

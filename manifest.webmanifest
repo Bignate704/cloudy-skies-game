@@ -1,0 +1,16 @@
+{
+  "name": "Cloudy Skies",
+  "short_name": "Cloudy Skies",
+  "description": "Help the winged bear bounce ever higher through the clouds.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#9ed2ff",
+  "theme_color": "#9ed2ff",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
