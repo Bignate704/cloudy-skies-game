@@ -929,31 +929,104 @@
     ctx.fillText("x " + coinCount, W - 42, 34);
   }
 
+  function wrapText(text, maxW) {
+    const words = text.split(" ");
+    const lines = [];
+    let line = "";
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
   function drawMenu() {
     drawBackground();
-    // sample platforms for looks
-    drawCloud(80, 480, 1, 0.7);
-    drawCloud(280, 540, 0.8, 0.7);
+    drawCloud(70, 70, 0.8, 0.55);
+    drawCloud(300, 120, 0.7, 0.55);
 
+    // title
     ctx.textAlign = "center";
     ctx.fillStyle = "#2a4a7a";
-    ctx.font = "bold 48px 'Comic Sans MS', sans-serif";
-    ctx.fillText("Cloudy", W / 2, 180);
-    ctx.fillText("Skies", W / 2, 230);
+    ctx.font = "bold 40px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Cloudy Skies", W / 2, 92);
 
-    // show the bear hovering on the menu
+    // ---- Tiny's intro speech bubble ----
+    ctx.font = "16px 'Comic Sans MS', sans-serif";
+    const msg = "Hi there! My name is Tiny, and I need your help getting to the very top! Can you please help me?";
+    const maxTextW = 250;
+    const lines = wrapText(msg, maxTextW);
+    const lineH = 22, padX = 18, padY = 16;
+    const bw = maxTextW + padX * 2;
+    const bh = lines.length * lineH + padY * 2;
+    const bx = W / 2 - bw / 2;
+    const by = 122;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "rgba(120,160,200,0.85)";
+    ctx.lineWidth = 2.5;
+    roundRect(bx, by, bw, bh, 16);
+    ctx.fill();
+    ctx.stroke();
+    // tail pointing down to the bear
+    const tailX = W / 2;
+    ctx.beginPath();
+    ctx.moveTo(tailX - 14, by + bh);
+    ctx.lineTo(tailX + 14, by + bh);
+    ctx.lineTo(tailX, by + bh + 22);
+    ctx.closePath();
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(tailX - 14, by + bh);
+    ctx.lineTo(tailX, by + bh + 22);
+    ctx.lineTo(tailX + 14, by + bh);
+    ctx.strokeStyle = "rgba(120,160,200,0.85)";
+    ctx.stroke();
+    // message text
+    ctx.fillStyle = "#2a4a7a";
+    ctx.font = "16px 'Comic Sans MS', sans-serif";
+    ctx.textAlign = "center";
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], W / 2, by + padY + (i + 1) * lineH - 6);
+    }
+
+    // bear hovering below the bubble
     bear = bear || { x: W / 2, y: 320, vx: 0, vy: 0, w: 46, h: 42, face: 1, flap: 0 };
-    bear.x = W / 2; bear.y = 330 + Math.sin(frame * 0.06) * 10; bear.flap = frame * 0.2; bear.face = 1; bear.vy = -1;
+    bear.x = W / 2; bear.y = by + bh + 78 + Math.sin(frame * 0.06) * 8;
+    bear.flap = frame * 0.2; bear.face = 1; bear.vy = -1;
     drawBear();
 
-    ctx.fillStyle = "#2a4a7a";
-    ctx.font = "bold 20px 'Comic Sans MS', sans-serif";
-    ctx.fillText("Tap to Fly", W / 2, 460);
-    ctx.font = "15px 'Comic Sans MS', sans-serif";
-    ctx.fillStyle = "rgba(42,74,122,0.8)";
-    ctx.fillText("Hold the LEFT or RIGHT", W / 2, 500);
-    ctx.fillText("side of the screen to steer", W / 2, 524);
-    if (highScore > 0) ctx.fillText("Best: " + highScore, W / 2, 560);
+    // ---- start button ----
+    const btnW = 180, btnH = 54, btnX = W / 2 - btnW / 2, btnY = 452;
+    const glow = 0.5 + Math.sin(frame * 0.09) * 0.5;
+    ctx.save();
+    ctx.shadowColor = "rgba(255,180,60,0.8)";
+    ctx.shadowBlur = 10 + glow * 14;
+    ctx.fillStyle = "#ffb23e";
+    ctx.strokeStyle = "#e07d1a";
+    ctx.lineWidth = 3;
+    roundRect(btnX, btnY, btnW, btnH, 27);
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = "#e07d1a";
+    ctx.lineWidth = 3;
+    roundRect(btnX, btnY, btnW, btnH, 27);
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 24px 'Comic Sans MS', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Tap to Fly", W / 2, btnY + btnH / 2 + 1);
+    ctx.textBaseline = "alphabetic";
+
+    // hint
+    ctx.fillStyle = "rgba(42,74,122,0.85)";
+    ctx.font = "14px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Hold the LEFT or RIGHT side to steer", W / 2, 528);
+    if (highScore > 0) ctx.fillText("Best: " + highScore, W / 2, 552);
   }
 
   function drawDead() {
