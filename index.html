@@ -306,19 +306,23 @@
     if ((e.key === "ArrowRight" || e.key === "d") && dir === 1) dir = 0;
   });
 
-  // Touch steering: press-and-hold the LEFT or RIGHT half of the screen.
-  // Tracks every active finger so quick left/right swaps respond instantly.
-  const held = new Map();   // pointerId -> -1 (left) or 1 (right)
+  // Touch steering: steer toward whichever side your finger is CURRENTLY on.
+  // We track the live finger position (updated as it moves) instead of latching
+  // to where you first touched - so the controls never feel inverted when a
+  // thumb drifts across the middle of the screen.
+  const pointers = new Map();   // pointerId -> current clientX
+  let activeId = null;          // the finger currently in charge of steering
 
   function sideOf(clientX) {
     const rect = canvas.getBoundingClientRect();
     return (clientX - rect.left) < rect.width / 2 ? -1 : 1;
   }
-  function applyHeld() {
-    // most-recent press wins, so tapping the other side flips direction at once
-    let d = 0;
-    for (const v of held.values()) d = v;
-    dir = d;
+  function updateSteer() {
+    if (activeId === null || !pointers.has(activeId)) {
+      activeId = null;
+      for (const id of pointers.keys()) activeId = id;   // hand control to another finger
+    }
+    dir = (activeId === null) ? 0 : sideOf(pointers.get(activeId));
   }
 
   canvas.addEventListener("pointerdown", (e) => {
@@ -326,15 +330,21 @@
     unlockAudio();   // browsers require a user gesture to start audio
     startMusic();
     if (state !== "play") { startGame(); return; }
+    pointers.set(e.pointerId, e.clientX);
+    activeId = e.pointerId;
     const side = sideOf(e.clientX);
-    held.set(e.pointerId, side);
-    applyHeld();
+    dir = side;
     // instant kick so the bear reacts the very frame you touch
     if (Math.sign(bear.vx) !== side) bear.vx = side * TAP_KICK;
     else bear.vx += side * TAP_KICK * 0.5;
   });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, e.clientX);
+    if (e.pointerId === activeId) dir = sideOf(e.clientX);   // follow the finger live
+  });
   function release(e) {
-    if (held.has(e.pointerId)) { held.delete(e.pointerId); applyHeld(); }
+    if (pointers.delete(e.pointerId)) updateSteer();
   }
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);
