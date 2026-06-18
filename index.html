@@ -96,8 +96,8 @@
   // ---- State ----
   let state = "menu";  // menu | play | dead
   const DOG_PHRASES = ["you're gee", "aww so tiny", "im gonna squeeze ma gee"];
-  let bear, platforms, particles, coins, dog;
-  let score, scrollY, coinCount, nextDogScore, highScore = 0;
+  let bear, platforms, particles, coins, dog, cat;
+  let score, scrollY, coinCount, nextDogScore, nextCatScore, highScore = 0;
   let dir = 0;          // -1 left, 1 right, 0 none (keyboard)
   let tilt = 0;         // device / pointer steering -1..1
   let frame = 0;
@@ -246,9 +246,11 @@
     particles = [];
     coins = [];
     dog = null;
+    cat = null;
     score = 0;
     coinCount = 0;
     nextDogScore = 500;
+    nextCatScore = 1500;
     scrollY = 0;
 
     // Starting platform right under the bear
@@ -463,6 +465,23 @@
     if (dog) {
       dog.t++;
       if (dog.t >= dog.life) dog = null;
+    }
+
+    // every 1500 points, a grey cat peeks in (same behaviour as the dog)
+    if (score >= nextCatScore) {
+      nextCatScore += 1500;
+      if (!cat) {
+        cat = {
+          side: Math.random() < 0.5 ? -1 : 1,
+          y: 150 + Math.random() * (H - 320),
+          t: 0, life: 80,
+          phrase: DOG_PHRASES[(Math.random() * DOG_PHRASES.length) | 0]
+        };
+      }
+    }
+    if (cat) {
+      cat.t++;
+      if (cat.t >= cat.life) cat = null;
     }
 
     // death: fell below screen
@@ -837,8 +856,11 @@
     ctx.fill();
 
     ctx.restore();   // undo the mirror so the speech text is never flipped
+    drawCritterBubble(d, cx, peek);
+  }
 
-    // ---- speech bubble (screen space) ----
+  // shared speech bubble (screen space) used by both the dog and the cat
+  function drawCritterBubble(d, cx, peek) {
     const face = d.side === -1 ? 1 : -1;   // direction into the screen
     const bobY = Math.sin(d.t * 0.25) * 2;
     const mouthX = cx + face * 20;
@@ -888,6 +910,130 @@
     ctx.fillStyle = "#2a4a7a";
     ctx.fillText(text, bx + padX, by + 20);
     ctx.restore();
+  }
+
+  // grey cat - same peek-in behaviour as the dog, different look
+  function drawCat(d) {
+    const prog = Math.min(d.t / d.life, 1);
+    const peek = Math.sin(prog * Math.PI);
+    const reach = 92;
+    const cx = d.side === -1 ? (peek * reach) : (W - peek * reach);
+
+    ctx.save();
+    ctx.translate(cx, d.y);
+    ctx.scale(d.side === -1 ? 1 : -1, 1);     // always face into the screen
+    ctx.translate(0, Math.sin(d.t * 0.25) * 2);
+
+    const grey = "#9aa3ab", shade = "#7f888f", light = "#c7cdd2", dark = "#2a2118", pink = "#f3a6b5";
+
+    // body trailing off behind the edge
+    ctx.fillStyle = grey;
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-30, 16, 26, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // tail curling up over the edge
+    ctx.strokeStyle = grey;
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-44, 20);
+    ctx.quadraticCurveTo(-62, -2, -44, -18);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+
+    // a paw resting on the edge
+    ctx.fillStyle = grey;
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-6, 34, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // pointy ears
+    ctx.fillStyle = grey;
+    ctx.beginPath();
+    ctx.moveTo(-12, -24); ctx.lineTo(-2, -3); ctx.lineTo(-21, -7); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(16, -26); ctx.lineTo(23, -3); ctx.lineTo(4, -5); ctx.closePath();
+    ctx.fill();
+    // inner ears
+    ctx.fillStyle = pink;
+    ctx.beginPath();
+    ctx.moveTo(-11, -19); ctx.lineTo(-6, -7); ctx.lineTo(-16, -9); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(15, -20); ctx.lineTo(18, -7); ctx.lineTo(8, -8); ctx.closePath();
+    ctx.fill();
+
+    // head
+    ctx.fillStyle = grey;
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(4, -6, 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // subtle tabby stripes
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-1, -28); ctx.lineTo(1, -20);
+    ctx.moveTo(6, -29); ctx.lineTo(6, -20);
+    ctx.moveTo(13, -28); ctx.lineTo(11, -20);
+    ctx.stroke();
+
+    // muzzle
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.ellipse(13, 6, 13, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // eyes (happy)
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.arc(2, -8, 3, 0, Math.PI * 2);
+    ctx.arc(16, -8, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(3, -9, 1, 0, Math.PI * 2);
+    ctx.arc(17, -9, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // pink nose
+    ctx.fillStyle = pink;
+    ctx.beginPath();
+    ctx.moveTo(15, 2); ctx.lineTo(22, 2); ctx.lineTo(18.5, 6); ctx.closePath();
+    ctx.fill();
+
+    // smiling mouth
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(18.5, 6);
+    ctx.quadraticCurveTo(13, 13, 8, 9);
+    ctx.moveTo(18.5, 6);
+    ctx.quadraticCurveTo(24, 13, 29, 9);
+    ctx.stroke();
+
+    // whiskers
+    ctx.strokeStyle = "rgba(120,128,135,0.85)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(22, 4); ctx.lineTo(40, 1);
+    ctx.moveTo(22, 7); ctx.lineTo(40, 9);
+    ctx.moveTo(6, 5); ctx.lineTo(-10, 3);
+    ctx.moveTo(6, 8); ctx.lineTo(-10, 11);
+    ctx.stroke();
+
+    ctx.restore();
+    drawCritterBubble(d, cx, peek);
   }
 
   function drawParticles() {
@@ -1066,6 +1212,7 @@
       drawParticles();
       drawBear();
       if (dog) drawDog(dog);
+      if (cat) drawCat(cat);
       drawHUD();
       if (state === "dead") drawDead();
     }
