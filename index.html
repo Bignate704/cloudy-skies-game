@@ -74,8 +74,8 @@
 
   // ---- State ----
   let state = "menu";  // menu | play | dead
-  let bear, platforms, particles;
-  let score, scrollY, highScore = 0;
+  let bear, platforms, particles, coins;
+  let score, scrollY, coinCount, highScore = 0;
   let dir = 0;          // -1 left, 1 right, 0 none (keyboard)
   let tilt = 0;         // device / pointer steering -1..1
   let frame = 0;
@@ -86,7 +86,9 @@
     bear = { x: W / 2, y: H - 120, vx: 0, vy: JUMP_V, w: 46, h: 42, face: 1, flap: 0 };
     platforms = [];
     particles = [];
+    coins = [];
     score = 0;
+    coinCount = 0;
     scrollY = 0;
 
     // Starting platform right under the bear
@@ -115,6 +117,11 @@
     if (r < 0.12 + difficulty * 0.15) type = "moving";
     else if (r < 0.22 + difficulty * 0.18) type = "broken";
     platforms.push(makePlatform(x, y, type));
+
+    // sometimes float a gold coin just above a (solid) cloud
+    if (type !== "broken" && Math.random() < 0.28) {
+      coins.push({ x: x + PLAT_W / 2, y: y - 28, r: 11, taken: false, spin: Math.random() * Math.PI * 2 });
+    }
   }
 
   // ---- Input ----
@@ -226,6 +233,20 @@
       }
     }
 
+    // collect coins (fly through them)
+    for (const c of coins) {
+      if (c.taken) continue;
+      c.spin += 0.12;
+      const dx = bear.x - c.x;
+      const dy2 = bear.y - c.y;
+      if (dx * dx + dy2 * dy2 < (c.r + bear.w * 0.4) * (c.r + bear.w * 0.4)) {
+        c.taken = true;
+        coinCount++;
+        score += 50;
+        puff(c.x, c.y, "#ffd34d");
+      }
+    }
+
     // scroll world when climbing high
     if (bear.y < SCROLL_LINE) {
       const dy = SCROLL_LINE - bear.y;
@@ -234,11 +255,13 @@
       score += dy * 0.1;
       for (const p of platforms) p.y += dy;
       for (const pc of particles) pc.y += dy;
+      for (const c of coins) c.y += dy;
     }
 
     // recycle platforms that fell off bottom; spawn new on top
     let highest = H;
     platforms = platforms.filter((p) => p.y < H + 30);
+    coins = coins.filter((c) => !c.taken && c.y < H + 30);
     for (const p of platforms) highest = Math.min(highest, p.y);
     while (highest > -10) {
       highest -= 55 + Math.random() * 60;
@@ -292,6 +315,40 @@
     ctx.arc(x + 20 * s, y + 4 * s, 22 * s, 0, Math.PI * 2);
     ctx.arc(x + 44 * s, y, 16 * s, 0, Math.PI * 2);
     ctx.arc(x + 22 * s, y - 12 * s, 16 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCoin(c) {
+    if (c.taken) return;
+    const wob = Math.abs(Math.cos(c.spin));  // 0..1 spinning squash
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    // soft glow
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#ffe9a0";
+    ctx.beginPath();
+    ctx.arc(0, 0, c.r + 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // coin body (squashes on the x axis as it spins)
+    ctx.scale(0.25 + wob * 0.75, 1);
+    ctx.fillStyle = "#f6c024";
+    ctx.strokeStyle = "#c8901a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, c.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // inner ring + star highlight
+    ctx.strokeStyle = "#ffe07a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, c.r * 0.6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.beginPath();
+    ctx.arc(-c.r * 0.25, -c.r * 0.3, c.r * 0.18, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -471,6 +528,15 @@
     ctx.font = "13px 'Comic Sans MS', sans-serif";
     ctx.fillStyle = "rgba(40,60,90,0.6)";
     ctx.fillText("BEST " + highScore, 14, 52);
+
+    // coin counter (top right)
+    ctx.save();
+    drawCoin({ x: W - 56, y: 26, r: 9, taken: false, spin: 0.6 });
+    ctx.restore();
+    ctx.fillStyle = "rgba(40,60,90,0.85)";
+    ctx.font = "bold 22px 'Comic Sans MS', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("x " + coinCount, W - 42, 34);
   }
 
   function drawMenu() {
@@ -509,9 +575,16 @@
     ctx.font = "bold 40px 'Comic Sans MS', sans-serif";
     ctx.fillText("Down you go!", W / 2, 250);
     ctx.font = "bold 30px 'Comic Sans MS', sans-serif";
-    ctx.fillText("Score " + Math.floor(score), W / 2, 310);
-    ctx.font = "20px 'Comic Sans MS', sans-serif";
-    ctx.fillText("Best " + highScore, W / 2, 348);
+    ctx.fillText("Score " + Math.floor(score), W / 2, 306);
+    drawCoin({ x: W / 2 - 34, y: 338, r: 11, taken: false, spin: 0.6 });
+    ctx.fillStyle = "#ffd34d";
+    ctx.font = "bold 24px 'Comic Sans MS', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("x " + coinCount, W / 2 - 16, 346);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#fff";
+    ctx.font = "18px 'Comic Sans MS', sans-serif";
+    ctx.fillText("Best " + highScore, W / 2, 378);
     ctx.font = "bold 22px 'Comic Sans MS', sans-serif";
     ctx.fillStyle = "#ffd34d";
     ctx.fillText("Tap to fly again", W / 2, 430);
@@ -526,6 +599,7 @@
     } else {
       drawBackground();
       for (const p of platforms) drawPlatform(p);
+      for (const c of coins) drawCoin(c);
       drawParticles();
       drawBear();
       drawHUD();
