@@ -64,9 +64,10 @@
   const GRAVITY = 0.32;
   const JUMP_V = -13.2;          // normal platform bounce
   const SPRING_V = -22;          // spring boost
-  const MOVE_ACCEL = 0.9;
-  const MAX_MOVE = 7.2;
-  const FRICTION = 0.86;
+  const MOVE_ACCEL = 1.7;        // snappier ramp-up
+  const MAX_MOVE = 8.8;          // higher top speed
+  const FRICTION = 0.78;         // quicker stop when you let go
+  const TAP_KICK = 4.6;          // instant nudge the moment you press a side
   const PLAT_W = 70;
   const PLAT_H = 16;
   const SCROLL_LINE = H * 0.42;  // when bear passes this, world scrolls
@@ -129,43 +130,39 @@
     if ((e.key === "ArrowRight" || e.key === "d") && dir === 1) dir = 0;
   });
 
-  // Pointer steering: hold/drag on the left or right side to steer
-  function pointerSteer(clientX) {
+  // Touch steering: press-and-hold the LEFT or RIGHT half of the screen.
+  // Tracks every active finger so quick left/right swaps respond instantly.
+  const held = new Map();   // pointerId -> -1 (left) or 1 (right)
+
+  function sideOf(clientX) {
     const rect = canvas.getBoundingClientRect();
-    const rel = (clientX - rect.left) / rect.width; // 0..1
-    tilt = Math.max(-1, Math.min(1, (rel - 0.5) * 2.2));
+    return (clientX - rect.left) < rect.width / 2 ? -1 : 1;
   }
+  function applyHeld() {
+    // most-recent press wins, so tapping the other side flips direction at once
+    let d = 0;
+    for (const v of held.values()) d = v;
+    dir = d;
+  }
+
   canvas.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
     if (state !== "play") { startGame(); return; }
-    pointerSteer(e.clientX);
+    const side = sideOf(e.clientX);
+    held.set(e.pointerId, side);
+    applyHeld();
+    // instant kick so the bear reacts the very frame you touch
+    if (Math.sign(bear.vx) !== side) bear.vx = side * TAP_KICK;
+    else bear.vx += side * TAP_KICK * 0.5;
   });
-  canvas.addEventListener("pointermove", (e) => {
-    if (e.buttons) pointerSteer(e.clientX);
-  });
-  canvas.addEventListener("pointerup", () => { tilt = 0; });
-  canvas.addEventListener("pointercancel", () => { tilt = 0; });
-  canvas.addEventListener("pointerleave", () => { tilt = 0; });
-
-  // Device tilt on phones. iOS needs a permission request (triggered on first tap below).
-  function onOrient(e) {
-    if (e.gamma != null) tilt = Math.max(-1, Math.min(1, e.gamma / 25));
+  function release(e) {
+    if (held.has(e.pointerId)) { held.delete(e.pointerId); applyHeld(); }
   }
-  window.addEventListener("deviceorientation", onOrient);
-
-  let tiltAsked = false;
-  function requestTilt() {
-    if (tiltAsked) return;
-    tiltAsked = true;
-    const DOE = window.DeviceOrientationEvent;
-    if (DOE && typeof DOE.requestPermission === "function") {
-      DOE.requestPermission().then((res) => {
-        if (res === "granted") window.addEventListener("deviceorientation", onOrient);
-      }).catch(() => {});
-    }
-  }
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("pointerleave", release);
 
   function startGame() {
-    requestTilt();   // ask for motion access on the first user tap (iOS requirement)
     reset();
     state = "play";
   }
@@ -498,8 +495,8 @@
     ctx.fillText("Tap to Fly", W / 2, 460);
     ctx.font = "15px 'Comic Sans MS', sans-serif";
     ctx.fillStyle = "rgba(42,74,122,0.8)";
-    ctx.fillText("Tilt your phone to steer", W / 2, 500);
-    ctx.fillText("(or hold left / right side)", W / 2, 524);
+    ctx.fillText("Hold the LEFT or RIGHT", W / 2, 500);
+    ctx.fillText("side of the screen to steer", W / 2, 524);
     if (highScore > 0) ctx.fillText("Best: " + highScore, W / 2, 560);
   }
 
