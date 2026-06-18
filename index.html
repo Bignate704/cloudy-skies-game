@@ -74,8 +74,8 @@
 
   // ---- State ----
   let state = "menu";  // menu | play | dead
-  let bear, platforms, particles, coins;
-  let score, scrollY, coinCount, highScore = 0;
+  let bear, platforms, particles, coins, dog;
+  let score, scrollY, coinCount, nextDogScore, highScore = 0;
   let dir = 0;          // -1 left, 1 right, 0 none (keyboard)
   let tilt = 0;         // device / pointer steering -1..1
   let frame = 0;
@@ -116,8 +116,10 @@
     platforms = [];
     particles = [];
     coins = [];
+    dog = null;
     score = 0;
     coinCount = 0;
+    nextDogScore = 300;
     scrollY = 0;
 
     // Starting platform right under the bear
@@ -314,6 +316,22 @@
       pc.life--;
     }
     particles = particles.filter((pc) => pc.life > 0);
+
+    // every 300 points, a smiling Maltese peeks in from a random side
+    if (score >= nextDogScore) {
+      nextDogScore += 300;
+      if (!dog) {
+        dog = {
+          side: Math.random() < 0.5 ? -1 : 1,
+          y: 150 + Math.random() * (H - 320),
+          t: 0, life: 80
+        };
+      }
+    }
+    if (dog) {
+      dog.t++;
+      if (dog.t >= dog.life) dog = null;
+    }
 
     // death: fell below screen
     if (bear.y - bear.h / 2 > H) {
@@ -582,6 +600,113 @@
     ctx.restore();
   }
 
+  // smiling white Maltese that peeks around the edge of the screen
+  function drawDog(d) {
+    const prog = Math.min(d.t / d.life, 1);
+    const peek = Math.sin(prog * Math.PI);   // 0 -> 1 -> 0 (slide in then out)
+    const reach = 92;
+    const cx = d.side === -1 ? (peek * reach) : (W - peek * reach);
+
+    ctx.save();
+    ctx.translate(cx, d.y);
+    ctx.scale(d.side === -1 ? 1 : -1, 1);     // always face into the screen
+    // gentle bob
+    ctx.translate(0, Math.sin(d.t * 0.25) * 2);
+
+    const fur = "#ffffff";
+    const shade = "#e6edf4";
+    const dark = "#2a2118";
+
+    // body trailing off behind the edge (mostly hidden)
+    ctx.fillStyle = fur;
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(-30, 16, 26, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // a little paw resting on the edge
+    ctx.beginPath();
+    ctx.ellipse(-6, 34, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // floppy ears (behind head) - long Maltese ears
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.ellipse(-12, 6, 11, 20, 0.3, 0, Math.PI * 2);   // back ear
+    ctx.fill();
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.ellipse(20, 8, 11, 21, -0.25, 0, Math.PI * 2);   // front ear
+    ctx.fill();
+    ctx.strokeStyle = shade;
+    ctx.stroke();
+
+    // head
+    ctx.fillStyle = fur;
+    ctx.strokeStyle = shade;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(4, -6, 25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // little top-knot tuft of fur
+    ctx.beginPath();
+    ctx.arc(0, -28, 7, 0, Math.PI * 2);
+    ctx.arc(10, -28, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // muzzle
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.ellipse(15, 4, 13, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // eyes (happy)
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.arc(2, -8, 3, 0, Math.PI * 2);
+    ctx.arc(16, -8, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(3, -9, 1, 0, Math.PI * 2);
+    ctx.arc(17, -9, 1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // rosy cheek
+    ctx.fillStyle = "rgba(255,170,170,0.5)";
+    ctx.beginPath();
+    ctx.arc(22, 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // nose
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.ellipse(20, 0, 3.6, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // big smiling mouth (open, with tongue)
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(20, 3);
+    ctx.quadraticCurveTo(20, 13, 12, 13);   // smile curving up at the end
+    ctx.moveTo(20, 3);
+    ctx.quadraticCurveTo(22, 12, 28, 12);
+    ctx.stroke();
+    // tongue
+    ctx.fillStyle = "#ff8fa3";
+    ctx.beginPath();
+    ctx.ellipse(20, 13, 4, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawParticles() {
     for (const pc of particles) {
       ctx.globalAlpha = Math.max(0, pc.life / 28);
@@ -684,6 +809,7 @@
       for (const c of coins) drawCoin(c);
       drawParticles();
       drawBear();
+      if (dog) drawDog(dog);
       drawHUD();
       if (state === "dead") drawDead();
     }
