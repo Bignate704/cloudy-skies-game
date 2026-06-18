@@ -277,12 +277,11 @@
     const r = Math.random();
     const difficulty = Math.min(score / 6000, 1);
     if (r < 0.12 + difficulty * 0.15) type = "moving";
-    else if (r < 0.22 + difficulty * 0.18) type = "broken";
     platforms.push(makePlatform(x, y, type));
 
-    // sometimes float a coin just above a (solid) cloud.
+    // sometimes float a coin just above a cloud.
     // ~12% of those are a rarer BIG coin worth a lot more.
-    if (type !== "broken" && Math.random() < 0.28) {
+    if (Math.random() < 0.28) {
       const big = Math.random() < 0.12;
       coins.push({
         x: x + PLAT_W / 2, y: y - (big ? 34 : 28),
@@ -450,10 +449,12 @@
     }
     particles = particles.filter((pc) => pc.life > 0);
 
-    // every 500 points, a smiling Maltese peeks in from a random side
+    // every 500 points the Maltese peeks in - EXCEPT on 1500-point marks,
+    // which belong to the cat instead.
     if (score >= nextDogScore) {
+      const reached = nextDogScore;
       nextDogScore += 500;
-      if (!dog) {
+      if (!dog && reached % 1500 !== 0) {
         dog = {
           side: Math.random() < 0.5 ? -1 : 1,
           y: 150 + Math.random() * (H - 320),
