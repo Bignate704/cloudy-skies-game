@@ -74,6 +74,7 @@
 
   // ---- State ----
   let state = "menu";  // menu | play | dead
+  const DOG_PHRASES = ["you're gee", "aww so tiny", "im gonna squeeze ma gee"];
   let bear, platforms, particles, coins, dog;
   let score, scrollY, coinCount, nextDogScore, highScore = 0;
   let dir = 0;          // -1 left, 1 right, 0 none (keyboard)
@@ -324,7 +325,8 @@
         dog = {
           side: Math.random() < 0.5 ? -1 : 1,
           y: 150 + Math.random() * (H - 320),
-          t: 0, life: 80
+          t: 0, life: 80,
+          phrase: DOG_PHRASES[(Math.random() * DOG_PHRASES.length) | 0]
         };
       }
     }
@@ -717,7 +719,7 @@
     ctx.font = "bold 16px 'Comic Sans MS', sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    const text = "you're gee";
+    const text = d.phrase || "you're gee";
     const tw = ctx.measureText(text).width;
     const padX = 12, bw = tw + padX * 2, bh = 30;
     const nearX = mouthX + face * 12;
