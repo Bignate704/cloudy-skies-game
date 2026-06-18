@@ -704,6 +704,57 @@
     ctx.ellipse(20, 13, 4, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    ctx.restore();   // undo the mirror so the speech text is never flipped
+
+    // ---- speech bubble (screen space) ----
+    const face = d.side === -1 ? 1 : -1;   // direction into the screen
+    const bobY = Math.sin(d.t * 0.25) * 2;
+    const mouthX = cx + face * 20;
+    const mouthY = d.y + bobY + 5;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, peek * 1.4));
+    ctx.font = "bold 16px 'Comic Sans MS', sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    const text = "you're gee";
+    const tw = ctx.measureText(text).width;
+    const padX = 12, bw = tw + padX * 2, bh = 30;
+    const nearX = mouthX + face * 12;
+    const bx = face === 1 ? nearX : nearX - bw;
+    const by = mouthY - bh - 14;
+
+    const base1X = mouthX + face * 14;
+    const base2X = base1X + face * 12;
+    const baseY = by + bh;
+    const apexX = mouthX + face * 2;
+    const apexY = mouthY - 2;
+
+    // bubble body
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "rgba(120,160,200,0.8)";
+    ctx.lineWidth = 2;
+    roundRect(bx, by, bw, bh, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // tail: fill over the bubble's bottom edge, then stroke only its two sides
+    ctx.beginPath();
+    ctx.moveTo(base1X, baseY);
+    ctx.lineTo(base2X, baseY);
+    ctx.lineTo(apexX, apexY);
+    ctx.closePath();
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(base1X, baseY);
+    ctx.lineTo(apexX, apexY);
+    ctx.lineTo(base2X, baseY);
+    ctx.stroke();
+
+    // text
+    ctx.fillStyle = "#2a4a7a";
+    ctx.fillText(text, bx + padX, by + 20);
     ctx.restore();
   }
 
