@@ -1,5 +1,5 @@
 // Cloudy Skies - offline service worker
-const CACHE = "cloudy-skies-v7";
+const CACHE = "cloudy-skies-v8";
 const ASSETS = [
   "./",
   "index.html",

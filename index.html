@@ -120,7 +120,7 @@
     dog = null;
     score = 0;
     coinCount = 0;
-    nextDogScore = 300;
+    nextDogScore = 500;
     scrollY = 0;
 
     // Starting platform right under the bear
@@ -318,9 +318,9 @@
     }
     particles = particles.filter((pc) => pc.life > 0);
 
-    // every 300 points, a smiling Maltese peeks in from a random side
+    // every 500 points, a smiling Maltese peeks in from a random side
     if (score >= nextDogScore) {
-      nextDogScore += 300;
+      nextDogScore += 500;
       if (!dog) {
         dog = {
           side: Math.random() < 0.5 ? -1 : 1,
